@@ -1,0 +1,71 @@
+version: '3.9'
+
+# ── Multi-Container App: React + Node.js + PostgreSQL ──────────
+# Run with: podman-compose up -d --build
+# Stop with: podman-compose down
+# Nuke volumes: podman-compose down -v
+#
+# PODMAN DIFFERENCES vs Docker:
+# 1. Runs rootless by default — no root daemon
+# 2. Volumes stored at ~/.local/share/containers/storage/volumes/
+# 3. Network backend is Netavark (not Docker bridge daemon)
+# 4. Binding host ports < 1024 requires: sudo sysctl net.ipv4.ip_unprivileged_port_start=80
+#    (not needed here since we use port 3000)
+# 5. condition: service_healthy under depends_on may be ignored by older podman-compose
+#    versions — the backend has built-in retry logic to compensate
+# 6. Use Containerfile instead of Dockerfile if you want to be explicit about Podman
+
+services:
+
+  db:
+    image: postgres:16
+    container_name: pg_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: apppassword
+      POSTGRES_DB: appdb
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U appuser -d appdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    container_name: node_backend
+    restart: unless-stopped
+    environment:
+      DB_HOST: db
+      DB_USER: appuser
+      DB_PASSWORD: apppassword
+      DB_NAME: appdb
+      PORT: 5000
+    depends_on:
+      - db
+      # Note: condition: service_healthy is omitted here for broader podman-compose
+      # compatibility. The backend's connectWithRetry() handles DB readiness instead.
+    networks:
+      - app_network
+
+  frontend:
+    build: ./frontend
+    container_name: react_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - app_network
+
+networks:
+  app_network:
+    driver: bridge
+
+volumes:
+  pg_data:

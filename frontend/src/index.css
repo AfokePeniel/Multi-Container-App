@@ -1,0 +1,116 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #0f1117;
+  color: #e2e8f0;
+  min-height: 100vh;
+}
+
+.app {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+h1 { font-size: 2rem; font-weight: 700; }
+
+.subtitle {
+  color: #64748b;
+  font-size: 0.9rem;
+  margin-top: 0.25rem;
+  letter-spacing: 0.05em;
+}
+
+.health-badge {
+  display: inline-block;
+  margin-top: 0.75rem;
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.health-badge.ok    { background: #14532d; color: #86efac; }
+.health-badge.error { background: #450a0a; color: #fca5a5; }
+
+.input-row {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+input {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  background: #1e2130;
+  border: 1px solid #2d3148;
+  border-radius: 8px;
+  color: #e2e8f0;
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+input:focus { border-color: #6366f1; }
+
+button {
+  padding: 0.75rem 1.5rem;
+  background: #6366f1;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+
+button:hover:not(:disabled) { background: #4f46e5; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.notes-list { list-style: none; display: flex; flex-direction: column; gap: 0.75rem; }
+
+.empty { color: #475569; text-align: center; padding: 2rem; }
+
+.note-item {
+  background: #1e2130;
+  border: 1px solid #2d3148;
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.note-item span { flex: 1; line-height: 1.5; }
+
+.note-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.note-meta small { color: #475569; font-size: 0.75rem; }
+
+.delete-btn {
+  padding: 0.2rem 0.5rem;
+  background: transparent;
+  color: #ef4444;
+  border: 1px solid #ef4444;
+  border-radius: 5px;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.delete-btn:hover { background: #ef4444; color: white; }
+
+.error { color: #fca5a5; margin-bottom: 1rem; font-size: 0.9rem; }
