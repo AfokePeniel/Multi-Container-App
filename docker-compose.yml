@@ -29,6 +29,7 @@ services:
 
   # ── Backend (Node.js/Express) ─────────────────────────────────
   backend:
+    image: afokepeniel/multi-container-backend:latest    # pulls from Docker Hub in production
     build: ./backend
     container_name: node_backend
     restart: unless-stopped
@@ -46,6 +47,7 @@ services:
 
   # ── Frontend (React + Nginx) ──────────────────────────────────
   frontend:
+    image: afokepeniel/multi-container-frontend:latest   # pulls from Docker Hub in production
     build: ./frontend
     container_name: react_frontend
     restart: unless-stopped
