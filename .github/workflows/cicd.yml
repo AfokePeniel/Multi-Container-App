@@ -14,7 +14,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1 — Check out the repository code
+      # Step 1 — Check out the repository code onto the runner
+      # GitHub Actions runners are fresh machines with no files — checkout gives them the repo
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -53,7 +54,12 @@ jobs:
     needs: build-and-push
 
     steps:
-      # Step 1 — Pull the latest images from Docker Hub and redeploy the stack
+      # Step 1 — Check out the repository code onto the fresh runner
+      # Each job runs on a brand new machine — without this the compose file would not be found
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2 — Pull the latest images from Docker Hub and redeploy the stack
       - name: Pull latest images and redeploy
         run: |
           docker pull afokepeniel/multi-container-backend:latest
