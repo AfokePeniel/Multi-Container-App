@@ -93,9 +93,8 @@ jobs:
   # ── JOB 3: SCAN IMAGES FOR VULNERABILITIES ───────────────────
   # Runs only after linting passes
   # Builds images locally, scans with Trivy — does not push yet
-  # --skip-dirs /usr/local/lib/node_modules/npm skips npm internals
-  # bundled with the Node.js base image which cannot be controlled
-  # Only application packages are scanned
+  # .trivyignore file excludes CVEs in npm internals bundled with
+  # the Node.js base image that cannot be fixed at the application level
   scan:
     name: Scan Images for Vulnerabilities
     runs-on: ubuntu-latest
@@ -126,7 +125,7 @@ jobs:
       # Step 4 — Scan the backend image with Trivy
       # format: table prints findings directly to the console
       # exit-code: 1 fails the pipeline if CRITICAL or HIGH vulnerabilities are found
-      # trivy-flags skips npm internals bundled with Node.js base image
+      # .trivyignore in the repo root is automatically picked up by Trivy
       - name: Scan backend image with Trivy
         uses: aquasecurity/trivy-action@master
         with:
@@ -134,7 +133,6 @@ jobs:
           format: table
           exit-code: 1
           severity: CRITICAL,HIGH
-          trivy-flags: --skip-dirs /usr/local/lib/node_modules/npm
 
       # Step 5 — Build the frontend image locally for scanning
       - name: Build frontend image for scanning
@@ -155,7 +153,6 @@ jobs:
           format: table
           exit-code: 1
           severity: CRITICAL,HIGH
-          trivy-flags: --skip-dirs /usr/local/lib/node_modules/npm
 
   # ── JOB 4: BUILD AND PUSH IMAGES TO DOCKER HUB ──────────────
   # Runs only after scan job passes — images are clean before pushing
