@@ -45,23 +45,30 @@ The database is the persistence layer. It stores all notes in a table and respon
 multi-container-app/
 ├── .github/
 │   └── workflows/
-│       └── cicd.yml        # GitHub Actions CI/CD pipeline
-├── frontend/               # Service directory — all code and build instructions for the React app
-│   ├── Dockerfile          # or Containerfile (Podman) — instructions to build the React + Nginx image
-│   ├── nginx.conf          # Serves React, proxies /api to backend
+│       └── cicd.yml             # GitHub Actions CI/CD pipeline
+├── frontend/                    # Service directory — all code and build instructions for the React app
+│   ├── .eslintrc.json           # ESLint rules for React and modern JSX
+│   ├── Dockerfile               # or Containerfile (Podman) — multi-stage: Node builds, Nginx serves
+│   ├── nginx.conf               # Serves React, proxies /api to backend
 │   ├── index.html
 │   ├── vite.config.js
 │   ├── src/
 │   │   ├── main.jsx
-│   │   ├── App.jsx         # Main React UI component
+│   │   ├── App.jsx              # Main React UI component
 │   │   └── index.css
-│   └── package.json        # Frontend dependencies and build scripts
-├── backend/                # Service directory — all code and build instructions for the Node.js API
-│   ├── Dockerfile          # or Containerfile (Podman) — instructions to build the Node.js image
-│   ├── index.js            # Express REST API and database logic
-│   └── package.json        # Backend dependencies and start scripts
-├── docker-compose.yml      # Builds and orchestrates all containers using Docker
-├── podman-compose.yml      # Same as above but runs on the Podman runtime
+│   └── package.json             # Frontend dependencies, build and lint scripts
+├── backend/                     # Service directory — all code and build instructions for the Node.js API
+│   ├── __tests__/
+│   │   └── api.test.js          # Jest and Supertest tests for all API endpoints
+│   ├── .eslintrc.json           # ESLint rules for Node.js
+│   ├── Dockerfile               # or Containerfile (Podman) — Node.js 20 Alpine
+│   ├── app.js                   # Express app and all routes — exported for testing
+│   ├── index.js                 # Server boot sequence — imports app from app.js
+│   └── package.json             # Backend dependencies, start, test, and lint scripts
+├── .trivyignore                 # CVEs excluded from Trivy scan — npm internals in Node.js base image
+├── .gitignore
+├── docker-compose.yml           # Builds and orchestrates all containers using Docker
+├── podman-compose.yml           # Same as above but runs on the Podman runtime
 └── README.md
 ```
 
@@ -78,31 +85,60 @@ The custom images for this project are published to Docker Hub:
 | Backend | `afokepeniel/multi-container-backend:latest` |
 | Frontend | `afokepeniel/multi-container-frontend:latest` |
 
+Each image is tagged with both `latest` and the Git commit SHA for traceability and rollback:
+- `latest` — for easy pulling and deployment
+- `abc1234` (commit SHA) — for traceability and rollback to a specific version
+
 ---
 
 ## CI/CD Pipeline
 
 This project uses GitHub Actions for CI/CD, triggered on every push to `main`.
 
-**Branching Strategy:**
+### Branching Strategy
+
 ```
 dev → staging → main
 ```
+
 - `dev` — active development and local testing
 - `staging` — pre-production validation
 - `main` — production, triggers the CI/CD pipeline
 
-**Pipeline Flow:**
+### Pipeline Flow
+
 ```
-push to main → build backend image → build frontend image → push both to Docker Hub → redeploy stack
+push to main
+  → Run Automated Tests + upload test report artifact
+    → Lint and Code Quality (ESLint — backend and frontend)
+      → Scan Images for Vulnerabilities (Trivy)
+        → Build and Push Images to Docker Hub (latest + commit SHA tags)
+          → Deploy (pauses for manual approval via Production environment)
 ```
 
-**GitHub Secrets required:**
+### Pipeline Optimizations
+
+| Feature | Implementation |
+|---|---|
+| Automated Testing | Jest and Supertest — 8 tests covering all 4 API endpoints |
+| Linting and Code Quality | ESLint for backend (.js) and frontend (.js, .jsx) |
+| Image Vulnerability Scanning | Trivy scans both images before pushing — pipeline fails on CRITICAL or HIGH CVEs |
+| Build Caching | GitHub Actions Cache via Docker Buildx — reuses unchanged layers across runs |
+| Image Tagging Strategy | Both `latest` and commit SHA tags pushed on every run |
+| Artifacts | Test results and scan reports uploaded to GitHub storage for 14 days |
+| Environment Protection Rules | Manual approval gate on the Production environment before deploy runs |
+| Notifications | GitHub email notifications on pipeline pass or fail |
+
+### GitHub Secrets Required
 
 | Secret | Value |
 |---|---|
 | `DOCKER_USERNAME` | your Docker Hub username |
 | `DOCKER_PASSWORD` | your Docker Hub access token |
+
+### GitHub Environment Required
+
+A `Production` environment must be configured in repo Settings → Environments with a required reviewer assigned. The deploy job references this environment and pauses for approval before running.
 
 ---
 
@@ -132,52 +168,71 @@ cd multi-container/multi-container-app
 # Step 2 — Log in to Docker Hub
 docker login
 
-# Step 3 — Build all images and start the containers
+# Step 3 — Create repositories on Docker Hub
+# Go to hub.docker.com and create:
+# afokepeniel/multi-container-backend
+# afokepeniel/multi-container-frontend
+
+# Step 4 — Build all images and start the containers
 docker compose up -d --build
 
-# Step 4 — Visit the app in your browser
+# Step 5 — Visit the app in your browser
 # http://localhost:3001
 
-# Step 5 — Tag the custom built images for Docker Hub
+# Step 6 — Tag the custom built images for Docker Hub
 docker tag multi-container-app-backend afokepeniel/multi-container-backend:latest
 docker tag multi-container-app-frontend afokepeniel/multi-container-frontend:latest
 
-# Step 6 — Push the images to Docker Hub
+# Step 7 — Push the images to Docker Hub
 # (db is skipped — it uses the official postgres:16 image from Docker Hub already)
 docker push afokepeniel/multi-container-backend:latest
 docker push afokepeniel/multi-container-frontend:latest
 
-# Step 7 — Initialize a git repository
+# Step 8 — Initialize a git repository
 git init
 
-# Step 8 — Stage all project files
+# Step 9 — Stage all project files
 git add .
 
-# Step 9 — Commit with a descriptive message
+# Step 10 — Commit with a descriptive message
 git commit -m "initial: multi-container react + node + postgres stack"
 
-# Step 10 — Point to your remote GitHub repository
+# Step 11 — Point to your remote GitHub repository
 git remote add origin https://github.com/AfokePeniel/Multi-Container-App.git
 
-# Step 11 — Rename branch to main and push to GitHub
+# Step 12 — Rename branch to main and push to GitHub
 git branch -m master main
 git push -u origin main
+
+# Step 13 — Create the GitHub Actions workflow directory and pipeline file
+mkdir -p .github/workflows
+# Add cicd.yml inside .github/workflows/
+
+# Step 14 — Add GitHub Secrets in your repository settings
+# DOCKER_USERNAME — your Docker Hub username
+# DOCKER_PASSWORD — your Docker Hub access token
+
+# Step 15 — Create a Production environment in repo Settings → Environments
+# Enable Required reviewers and add yourself
+
+# Step 16 — Commit and push the pipeline file to trigger the CI/CD pipeline
+git add .
+git commit -m "add: github actions cicd pipeline"
+git push origin main
+
+# Step 17 — Verify the pipeline ran successfully in the GitHub Actions tab
+# Approve the deploy job when prompted
 ```
 
 ### Podman Alternative
 
 ```bash
-# Step 3 (Podman) — Build all images and start the containers
+# Build and start
 podman-compose -f podman-compose.yml up -d --build
 
-# Step 4 (Podman) — Visit the app in your browser
-# http://localhost:3001
-
-# Step 5 (Podman) — Tag the custom built images for Docker Hub
+# Tag and push images
 podman tag multi-container-app-backend afokepeniel/multi-container-backend:latest
 podman tag multi-container-app-frontend afokepeniel/multi-container-frontend:latest
-
-# Step 6 (Podman) — Push the images to Docker Hub
 podman push afokepeniel/multi-container-backend:latest
 podman push afokepeniel/multi-container-frontend:latest
 ```
@@ -226,6 +281,9 @@ The frontend Dockerfile uses two stages: a Node.js stage to compile the React ap
 **DB Readiness Handling**
 The backend retries the database connection up to 10 times on startup with a 2-second delay between attempts. This compensates for the fact that PostgreSQL takes a moment to be ready even after its container starts.
 
+**App and Server Separation**
+The backend is split into `app.js` (Express app and routes) and `index.js` (server boot sequence). This separation allows Jest and Supertest to import the app without starting the server, which is the standard Node.js testing pattern.
+
 ---
 
 ## Docker vs Podman
@@ -246,23 +304,13 @@ The backend retries the database connection up to 10 times on startup with a 2-s
 
 **Port already in use:**
 ```bash
-# Find what is using the port
 sudo ss -tlnp | grep 3001
-
-# Kill it
 sudo fuser -k 3001/tcp
-
-# Or change the port in docker-compose.yml
-ports:
-  - "3002:80"
 ```
 
 **Backend cannot reach the DB:**
 ```bash
-# Check DB container health
 docker inspect pg_db | grep -A5 Health
-
-# Shell into backend and test manually
 docker exec -it node_backend sh
 ```
 
