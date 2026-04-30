@@ -8,14 +8,172 @@ on:
 
 jobs:
 
-  # ── JOB 1: BUILD AND PUSH IMAGES TO DOCKER HUB ──────────────
-  build-and-push:
-    name: Build and Push Images
+  # ── JOB 1: AUTOMATED TESTS ────────────────────────────────────
+  # Runs first — if any test fails the pipeline stops immediately
+  # Nothing gets built, scanned, or pushed until all tests pass
+  test:
+    name: Run Automated Tests
     runs-on: ubuntu-latest
 
     steps:
       # Step 1 — Check out the repository code onto the runner
-      # GitHub Actions runners are fresh machines with no files — checkout gives them the repo
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2 — Set up Node.js environment to run the tests
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Step 3 — Install backend dependencies including Jest and Supertest
+      - name: Install dependencies
+        working-directory: ./backend
+        run: npm install
+
+      # Step 4 — Run the test suite and output results to a JSON report file
+      # --json writes results to test-results.json
+      # --outputFile specifies where to save the report
+      # || true ensures the step does not fail before the artifact is uploaded
+      - name: Run tests
+        working-directory: ./backend
+        run: npm test -- --json --outputFile=test-results.json || true
+
+      # Step 5 — Upload the test report as a GitHub Actions artifact
+      # Stored in GitHub's cloud storage for 14 days
+      # Accessible from the Actions run page under the Artifacts section
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()   # upload even if tests fail so we can review what went wrong
+        with:
+          name: test-results
+          path: backend/test-results.json
+          retention-days: 14
+
+  # ── JOB 2: LINTING AND CODE QUALITY ──────────────────────────
+  # Runs after tests pass — checks both backend and frontend code for
+  # syntax errors, bad practices, and formatting issues using ESLint
+  # If any lint error is found the pipeline stops — nothing gets scanned or built
+  lint:
+    name: Lint and Code Quality
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      # Step 1 — Check out the repository code onto the runner
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2 — Set up Node.js environment
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Step 3 — Install backend dependencies including ESLint
+      - name: Install backend dependencies
+        working-directory: ./backend
+        run: npm install
+
+      # Step 4 — Run ESLint on all backend .js files
+      - name: Lint backend code
+        working-directory: ./backend
+        run: npm run lint
+
+      # Step 5 — Install frontend dependencies including ESLint and React plugins
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: npm install
+
+      # Step 6 — Run ESLint on all frontend .js and .jsx files
+      - name: Lint frontend code
+        working-directory: ./frontend
+        run: npm run lint
+
+  # ── JOB 3: SCAN IMAGES FOR VULNERABILITIES ───────────────────
+  # Runs only after linting passes
+  # Builds images locally, scans with Trivy — does not push yet
+  # Scan reports are uploaded as artifacts for audit and review
+  scan:
+    name: Scan Images for Vulnerabilities
+    runs-on: ubuntu-latest
+    needs: lint
+
+    steps:
+      # Step 1 — Check out the repository code onto the runner
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2 — Set up Docker Buildx (required for cache support in scan job)
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Step 3 — Build the backend image locally for scanning
+      - name: Build backend image for scanning
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: false
+          tags: multi-container-backend:scan
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+
+      # Step 4 — Scan the backend image with Trivy and save report to a file
+      # format: json saves the full structured report for the artifact
+      # exit-code: 1 still fails the pipeline on CRITICAL or HIGH findings
+      - name: Scan backend image with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: multi-container-backend:scan
+          format: json
+          output: trivy-backend-report.json
+          exit-code: 1
+          severity: CRITICAL,HIGH
+
+      # Step 5 — Build the frontend image locally for scanning
+      - name: Build frontend image for scanning
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: false
+          tags: multi-container-frontend:scan
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,scope=frontend,mode=max
+
+      # Step 6 — Scan the frontend image with Trivy and save report to a file
+      - name: Scan frontend image with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: multi-container-frontend:scan
+          format: json
+          output: trivy-frontend-report.json
+          exit-code: 1
+          severity: CRITICAL,HIGH
+
+      # Step 7 — Upload both Trivy scan reports as artifacts
+      # if: always() ensures reports are uploaded even if the scan found vulnerabilities
+      # so you can review exactly what was found before fixing and re-running
+      # Stored in GitHub's cloud storage for 14 days
+      - name: Upload scan reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trivy-scan-reports
+          path: |
+            trivy-backend-report.json
+            trivy-frontend-report.json
+          retention-days: 14
+
+  # ── JOB 4: BUILD AND PUSH IMAGES TO DOCKER HUB ──────────────
+  # Runs only after scan job passes — images are clean before pushing
+  # Tags each image with both latest and the Git commit SHA for traceability
+  build-and-push:
+    name: Build and Push Images
+    runs-on: ubuntu-latest
+    needs: scan
+
+    steps:
+      # Step 1 — Check out the repository code onto the runner
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -30,23 +188,40 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Step 4 — Build and push the backend image to Docker Hub
+      # Step 4 — Extract the short Git commit SHA (first 7 characters)
+      # Used to tag the image with a unique traceable identifier
+      # e.g. afokepeniel/multi-container-backend:abc1234
+      - name: Extract short commit SHA
+        id: vars
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      # Step 5 — Build and push the backend image with two tags:
+      # latest — for easy pulling and deployment
+      # commit SHA — for traceability and rollback
       - name: Build and push backend image
         uses: docker/build-push-action@v5
         with:
           context: ./backend
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/multi-container-backend:latest
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/multi-container-backend:latest
+            ${{ secrets.DOCKER_USERNAME }}/multi-container-backend:${{ steps.vars.outputs.sha_short }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
 
-      # Step 5 — Build and push the frontend image to Docker Hub
+      # Step 6 — Build and push the frontend image with two tags
       - name: Build and push frontend image
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/multi-container-frontend:latest
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/multi-container-frontend:latest
+            ${{ secrets.DOCKER_USERNAME }}/multi-container-frontend:${{ steps.vars.outputs.sha_short }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,scope=frontend,mode=max
 
-  # ── JOB 2: DEPLOY ─────────────────────────────────────────────
+  # ── JOB 5: DEPLOY ─────────────────────────────────────────────
   # Runs only after build-and-push completes successfully
   deploy:
     name: Deploy
