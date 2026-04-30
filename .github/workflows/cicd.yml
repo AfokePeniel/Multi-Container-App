@@ -44,7 +44,7 @@ jobs:
       # Accessible from the Actions run page under the Artifacts section
       - name: Upload test results
         uses: actions/upload-artifact@v4
-        if: always()   # upload even if tests fail so we can review what went wrong
+        if: always()
         with:
           name: test-results
           path: backend/test-results.json
@@ -109,11 +109,16 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       # Step 3 — Build the backend image locally for scanning
+      # push: false — do not push to Docker Hub yet
+      # load: true — loads the image into the local Docker daemon so Trivy can find it
+      # cache-from pulls cached layers from GitHub Actions Cache if available
+      # cache-to saves the newly built layers back to cache for future runs
       - name: Build backend image for scanning
         uses: docker/build-push-action@v5
         with:
           context: ./backend
           push: false
+          load: true
           tags: multi-container-backend:scan
           cache-from: type=gha,scope=backend
           cache-to: type=gha,scope=backend,mode=max
@@ -136,6 +141,7 @@ jobs:
         with:
           context: ./frontend
           push: false
+          load: true
           tags: multi-container-frontend:scan
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,scope=frontend,mode=max
