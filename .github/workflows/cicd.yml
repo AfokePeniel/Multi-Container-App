@@ -93,7 +93,7 @@ jobs:
   # ── JOB 3: SCAN IMAGES FOR VULNERABILITIES ───────────────────
   # Runs only after linting passes
   # Builds images locally, scans with Trivy — does not push yet
-  # Scan reports are uploaded as artifacts for audit and review
+  # format: table prints vulnerabilities directly to console for visibility
   scan:
     name: Scan Images for Vulnerabilities
     runs-on: ubuntu-latest
@@ -111,8 +111,6 @@ jobs:
       # Step 3 — Build the backend image locally for scanning
       # push: false — do not push to Docker Hub yet
       # load: true — loads the image into the local Docker daemon so Trivy can find it
-      # cache-from pulls cached layers from GitHub Actions Cache if available
-      # cache-to saves the newly built layers back to cache for future runs
       - name: Build backend image for scanning
         uses: docker/build-push-action@v5
         with:
@@ -123,15 +121,14 @@ jobs:
           cache-from: type=gha,scope=backend
           cache-to: type=gha,scope=backend,mode=max
 
-      # Step 4 — Scan the backend image with Trivy and save report to a file
-      # format: json saves the full structured report for the artifact
-      # exit-code: 1 still fails the pipeline on CRITICAL or HIGH findings
+      # Step 4 — Scan the backend image with Trivy
+      # format: table prints findings directly to the console
+      # exit-code: 1 fails the pipeline if CRITICAL or HIGH vulnerabilities are found
       - name: Scan backend image with Trivy
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: multi-container-backend:scan
-          format: json
-          output: trivy-backend-report.json
+          format: table
           exit-code: 1
           severity: CRITICAL,HIGH
 
@@ -146,29 +143,14 @@ jobs:
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,scope=frontend,mode=max
 
-      # Step 6 — Scan the frontend image with Trivy and save report to a file
+      # Step 6 — Scan the frontend image with Trivy
       - name: Scan frontend image with Trivy
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: multi-container-frontend:scan
-          format: json
-          output: trivy-frontend-report.json
+          format: table
           exit-code: 1
           severity: CRITICAL,HIGH
-
-      # Step 7 — Upload both Trivy scan reports as artifacts
-      # if: always() ensures reports are uploaded even if the scan found vulnerabilities
-      # so you can review exactly what was found before fixing and re-running
-      # Stored in GitHub's cloud storage for 14 days
-      - name: Upload scan reports
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: trivy-scan-reports
-          path: |
-            trivy-backend-report.json
-            trivy-frontend-report.json
-          retention-days: 14
 
   # ── JOB 4: BUILD AND PUSH IMAGES TO DOCKER HUB ──────────────
   # Runs only after scan job passes — images are clean before pushing
