@@ -213,10 +213,14 @@ jobs:
 
   # ── JOB 5: DEPLOY ─────────────────────────────────────────────
   # Runs only after build-and-push completes successfully
+  # References the Production environment which has a required reviewer
+  # protection rule — the deploy pauses and waits for manual approval
+  # before running. GitHub notifies the reviewer by email.
   deploy:
     name: Deploy
     runs-on: ubuntu-latest
     needs: build-and-push
+    environment: Production              # references the GitHub environment with protection rules
 
     steps:
       # Step 1 — Check out the repository code onto the fresh runner
