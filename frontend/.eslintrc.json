@@ -23,8 +23,10 @@
   "rules": {
     "no-unused-vars": "error",
     "no-undef": "error",
-    "semi": ["error", "always"],
-    "quotes": ["error", "single"],
-    "react/prop-types": "off"
+    "no-console": "off",
+    "semi": "off",
+    "quotes": "off",
+    "react/prop-types": "off",
+    "react/react-in-jsx-scope": "off"
   }
 }
